@@ -8,7 +8,7 @@ With this project, I want to introduce hand gestures into this game. There are b
 2. Click on a cell. Both this action and the action below require gesture recognition. 
 3. Flag a cell.
 
-
+At this moment, the engine is only able to track the movement of the index finger. Adding gesture control will be the next. 
 ---
 A few screenshots of the game are shown below.
 
