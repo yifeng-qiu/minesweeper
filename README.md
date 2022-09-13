@@ -8,7 +8,11 @@ With this project, I want to introduce hand gestures into this game. There are b
 2. Click on a cell. Both this action and the action below require gesture recognition. 
 3. Flag a cell.
 
-At this moment, the engine is only able to track the movement of the index finger. Adding gesture control will be next.
+Gesture recognition has been implemented. 
+Move index finger to select cell. Selected cell is highlighted with a blue box.
+Open the palm to click on the selected cell and make a fist to flag the selected cell. 
+
+Press p to pause the game.
  
 ---
 A few screenshots of the game are shown below.
