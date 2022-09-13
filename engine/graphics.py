@@ -2,10 +2,15 @@ import cv2
 import os
 import csv
 import numpy as np
+from collections import namedtuple
+
+Point = namedtuple('Point', ['x', 'y'])
+ImgSize = namedtuple('Size', ['width', 'height'])
+GameSize = namedtuple('Size', ['row', 'col'])
 
 module_directory = os.path.dirname(os.path.abspath(__file__))
 SCREEN_RESOLUTION = {
-    'MBP-13 2020': [1600, 2560]
+    'MBP-13 2020': [2560, 1600]
 }
 
 
@@ -13,21 +18,23 @@ class GameGraphics:
     textureFile = os.path.join(module_directory, 'sprites', 'textures.png')
     textureMap = os.path.join(module_directory, 'sprites', 'texturemap.txt')
 
-    def __init__(self, game, system='MBP-13 2020'):
-
-        self.game = game
+    def __init__(self, gameSize, system='MBP-13 2020'):
         self.system = system
-        self.board_row, self.board_col = self.game.get_board_size()
+        self.gameSize = gameSize
         self.cellSize = 200
         self.boardImg = None
-        self.text = [None, None]
+        self.boardSize = None
+        self.screenSize = ImgSize(*SCREEN_RESOLUTION[self.system])
         self.drawFocusBox = False
         self.focusBox = (0, 0)
-        self.load_textures()
-        self.game_board_init()
-        self.draw_game_board()
+        self.windowTopLeftCorner = None
+        self.lastCommand = None
+        self.gameStatusText = ''
+        self.debugInfo = True
+        self.loadTextures()
+        self.gameBoardInit()
 
-    def load_textures(self):
+    def loadTextures(self):
         with open(self.textureMap, 'r', newline='') as fp:
             csvreader = csv.reader(fp, delimiter=',')
             try:
@@ -43,71 +50,83 @@ class GameGraphics:
                      for tName, coord in textureMapping.items()}
 
         # determine texture size from screen resolution and board configuration
-        screen_height, screen_width = SCREEN_RESOLUTION[self.system]
-        self.screen_height = screen_height
-        self.screen_width = screen_width
-        cellSize = int(min(screen_height * 0.8 // (self.board_row),
-                       screen_width * 0.9 // (self.board_col)))
+        cellSize = int(min(self.screenSize.height * 0.8 // (self.gameSize.row),
+                       self.screenSize.width * 0.9 // (self.gameSize.col)))
         self.cellSize = cellSize
         self.textures = {tName: cv2.resize(
             img, [cellSize, cellSize]) for tName, img in _textures.items()}
 
-    def game_board_init(self):
-        self.boardImg = np.zeros((self.board_row * self.cellSize,
-                                  self.board_col * self.cellSize,
+    def gameBoardInit(self):
+        self.boardImg = np.zeros((self.gameSize.row * self.cellSize,
+                                  self.gameSize.col * self.cellSize,
                                   3),
                                  dtype=np.uint8)
+        self.boardSize = ImgSize(self.boardImg.shape[1], self.boardImg.shape[0])
 
-    def draw_game_board(self):
-        board = self.game.get_board()
-        for r in range(self.board_row):
-            for c in range(self.board_col):
-                self.boardImg[r*self.cellSize:(r+1) * self.cellSize,
-                              c*self.cellSize:(c+1) * self.cellSize, :] =\
-                    self.textures[str(board[r][c])]
-
-    def get_board(self):
+    def drawGameBoard(self, board=None):
+        if board:
+            for r in range(self.gameSize.row):
+                for c in range(self.gameSize.col):
+                    self.boardImg[r*self.cellSize:(r+1) * self.cellSize,
+                                c*self.cellSize:(c+1) * self.cellSize, :] =\
+                        self.textures[str(board[r][c])]
+        
         _img = self.boardImg.copy()
-        if self.text is not None:
-            for text in self.text:
-                if text is not None:
-                    cv2.putText(_img, text[0], text[1], cv2.FONT_HERSHEY_SIMPLEX,
-                    1, text[2], 2, cv2.LINE_AA)
+
+        if self.gameStatusText != '':
+            cv2.putText(_img, self.gameStatusText, 
+            (self.boardSize.width // 2 - 200, self.boardSize.height //2),
+            cv2.FONT_HERSHEY_PLAIN, 10, (250, 114, 112), 10, cv2.LINE_AA)
         
         if self.drawFocusBox:
             row, col = self.focusBox
             pt1 = (col * self.cellSize, row * self.cellSize)
             pt2 = (pt1[0] + self.cellSize, (pt1[1] + self.cellSize))
             cv2.rectangle(_img, pt1, pt2, (255, 0, 0), 5, cv2.LINE_AA)
-        return _img
-
-
-    def coord_to_cell(self, coord):
-        row, col = coord[0] // self.cellSize, coord[1] // self.cellSize
-        if row <0:
-            row =0
-        elif row > self.board_row - 1:
-            row = self.board_row - 1
         
-        if col <0:
-            col = 0
-        elif col > self.board_col - 1:
-            col = self.board_col - 1
+        if self.debugInfo and self.windowTopLeftCorner:
+            # show window lower-left corner coordinate in the screen image
+            # windowLocText = f'Game window lower-left corner x: {self.windowTopLeftCorner.x} y: {self.windowTopLeftCorner.y}'
+            # cv2.putText(_img, windowLocText, (5, self.boardSize.height - 10), cv2.FONT_HERSHEY_SIMPLEX,
+            #         1, (250, 114, 112), 2, cv2.LINE_AA)
+            # show last executed command
+            lastCmdText = f'Last recognized command {self.lastCommand}'
+            cv2.putText(_img, lastCmdText, (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 1, (250, 114, 112), 2, cv2.LINE_AA)            
+
+        return _img       
+
+    def coordToCell(self, coord):
+        row, col = coord[0] // self.cellSize, coord[1] // self.cellSize
+        row = max(0, min(row, self.gameSize.row - 1))
+        col = max(0, min(col, self.gameSize.col - 1))
         return (row, col)
 
-    def getWindowTopCornerCoordCenterAligned(self):
-        screen_height, screen_width = SCREEN_RESOLUTION[self.system]
-        board_height, board_width = self.boardImg.shape[:2]
-        x = int((screen_width - board_width) // 3)
-        y = int((screen_height - board_height) // 2)
-        return (x, y)
+    def cellToCoord(self, cell):
+        row, col = int((cell[0] + 0.5) * self.cellSize), int((cell[1] + 0.5) * self.cellSize)
+        return (row, col)        
+    
+    def enableFocusBox(self):
+        self.drawFocusBox = True
+    
+    def disableFocusBox(self):
+        self.drawFocusBox = False
 
-    def add_text(self, text, coord, color, seq=0):
-        self.text[seq] = [text, coord, color]
-    
-    def toggle_focus_box(self):
-        self.drawFocusBox = not self.drawFocusBox
-    
-    def set_focus_box(self, cell):
+    def setFocusBox(self, cell):
         self.focusBox = cell
+
+    def gameStatusText(self, text):
+        self.gameStatusText = text
+
+    def setGameWindowTopLeftCoord(self, x, y):
+        y = self.screenSize.height - self.boardSize.height - y
+        self.windowTopLeftCorner = Point(x, y)
     
+    def setLastExecutedCommand(self, cmd):
+        self.lastCommand = cmd
+
+    def fingerInsideGameWindow(self, x, y):
+        return (self.windowTopLeftCorner.x <= x <= self.windowTopLeftCorner.x + self.boardSize.width) and \
+            (self.windowTopLeftCorner.y <= y <= self.windowTopLeftCorner.y + self.boardSize.height)
+    
+    def getRelativeBoardCoord(self, x, y):
+        return (y - self.windowTopLeftCorner.y, x - self.windowTopLeftCorner.x)

@@ -1,7 +1,7 @@
 """
 MineSweeper game engine.
 """
-from .engine import MineSweeper
+from .minesweeper import MineSweeper
 from .graphics import GameGraphics
-from .fingercontroller import FingerController
-
+from .gesturecontroller import GestureController
+from .gameplay import GamePlay
